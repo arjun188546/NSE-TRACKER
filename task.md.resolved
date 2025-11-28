@@ -1,0 +1,55 @@
+# PDF Extraction and Announcement Detection Improvements
+
+## Issues to Address
+1. **Incorrect PDF Detection**: For companies like ICICI and Reliance, the scraper is picking up notification PDFs (announcing when results will be published) instead of actual financial result PDFs
+2. **PDF Parsing Timeout**: Current timeout is too short, causing parsing failures
+3. **Dynamic Announcement Detection**: Need to detect the correct announcement from multiple announcements on different days
+4. **Calendar Dashboard Display**: Show detected announcements with proper filtering
+
+## Task Breakdown
+
+### Phase 1: Increase Timeout Rates
+- [/] Update HTTP client timeout from 30 seconds to 5 minutes for PDF downloads
+- [ ] Update PDF parsing timeout to handle large PDFs
+- [ ] Add configurable timeout settings for different operations
+
+### Phase 2: Implement Announcement Metadata Detection
+- [ ] Create announcement-detector.ts module
+- [ ] Implement subject field analysis:
+  - [ ] Detect "General Updates" → notification
+  - [ ] Detect "Outcome of Board Meeting" → results
+  - [ ] Detect "Financial Results", "Quarterly Results" → results
+- [ ] Implement description field analysis:
+  - [ ] Detect "Call with Media", "has informed the Exchange about" → notification
+  - [ ] Detect "submitted to the Exchange", "unaudited financial results" → results
+- [ ] Add scoring system to prioritize announcements
+- [ ] Add result declaration date extraction from notification descriptions
+
+### Phase 3: Update Results Scraper with Early Detection
+- [ ] Import announcement detector in results-scraper.ts
+- [ ] Add announcement type detection BEFORE PDF download
+- [ ] Filter announcements in scrapeResultsCalendar():
+  - [ ] Skip "General Updates" announcements for PDF processing
+  - [ ] Prioritize "Outcome of Board Meeting" announcements
+- [ ] Update processAnnouncement() flow:
+  - [ ] Check announcement metadata first
+  - [ ] Store notifications with declaration date (no PDF processing)
+  - [ ] Process only actual results announcements
+  - [ ] Use PDF content analysis as fallback for unknown types
+- [ ] Add enhanced logging with announcement details
+
+
+### Phase 4: Calendar Dashboard Enhancement
+- [ ] Display all detected announcements with their types (notification vs results)
+- [ ] Add announcement date column
+- [ ] Add result declaration date column (extracted from notification PDFs)
+- [ ] Add PDF type indicator (notification/results/unknown)
+- [ ] Add filtering options for announcement types
+- [ ] Show processing status for each announcement
+
+### Phase 5: Testing and Validation
+- [ ] Test with ICICI Bank announcements
+- [ ] Test with Reliance Industries announcements
+- [ ] Verify timeout improvements
+- [ ] Validate announcement detection accuracy
+- [ ] Check calendar dashboard display

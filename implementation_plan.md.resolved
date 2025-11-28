@@ -1,0 +1,274 @@
+# Fix PDF Extraction and Announcement Detection
+
+## Problem Statement
+
+The current NSE scraper has several critical issues:
+
+1. **Incorrect PDF Detection**: For companies like ICICI Bank and Reliance Industries, the scraper downloads notification PDFs (announcing when results will be published) instead of actual financial result PDFs
+2. **Timeout Issues**: PDF parsing times out due to insufficient timeout limits (currently 30 seconds)
+3. **No Announcement Filtering**: The system doesn't distinguish between notification announcements and actual result announcements
+4. **Limited Calendar Display**: The calendar dashboard doesn't show announcement types or help users identify which announcements contain actual results
+
+### NSE Announcement Patterns (Based on ICICI Bank Example)
+
+**Notification Announcement** (Should be SKIPPED for financial data extraction):
+- **Subject**: "General Updates"
+- **Description**: "ICICI Bank Limited has informed the Exchange about **Call with Media** on financial results for the quarter and six months ended September 30, 2025."
+- **Key Indicators**: "Call with Media", "has informed the Exchange about"
+- **Purpose**: Announces when results will be discussed, not the actual results
+
+**Actual Results Announcement** (Should be PROCESSED):
+- **Subject**: "Outcome of Board Meeting"
+- **Description**: "ICICI Bank Limited has **submitted to the Exchange, the unaudited financial results** (standalone and consolidated) for the quarter and six months ended September 30, 2025."
+- **Key Indicators**: "Outcome of Board Meeting", "submitted to the Exchange", "unaudited financial results", "financial results (standalone and consolidated)"
+- **Purpose**: Contains the actual financial results PDF
+
+### Visual Examples
+
+**Notification Announcement (SKIP)**:
+
+![Notification announcement showing "General Updates" subject and "Call with Media" description](C:/Users/HP/.gemini/antigravity/brain/cda3f423-698a-40b6-b525-942f53f8ba03/notification_announcement.png)
+
+**Actual Results Announcement (PROCESS)**:
+
+![Results announcement showing "Outcome of Board Meeting" subject and "submitted to the Exchange" description](C:/Users/HP/.gemini/antigravity/brain/cda3f423-698a-40b6-b525-942f53f8ba03/results_announcement.png)
+
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Timeout Configuration**: I will increase the HTTP client timeout from 30 seconds to 5 minutes (300 seconds) for PDF downloads and parsing operations. This should handle even the largest PDFs. Please confirm if 5 minutes is acceptable or if you prefer a different duration.
+
+> [!WARNING]
+> **Announcement Detection Strategy**: The system will now analyze announcement **subject and description fields** BEFORE downloading PDFs. Announcements with subject "General Updates" or descriptions containing "Call with Media" will be classified as notifications and their PDFs will NOT be processed for financial data. Only announcements with subject "Outcome of Board Meeting" or descriptions containing "submitted to the Exchange" will be processed. This metadata-based approach is more efficient and accurate than PDF content analysis.
+
+## Proposed Changes
+
+### Server-Side Changes
+
+#### [MODIFY] [http-client.ts](file:///c:/Users/HP/NSE/NSEClientManager/server/services/nse-scraper/http-client.ts)
+
+**Changes**:
+- Increase default timeout from 30 seconds to 5 minutes (300,000ms)
+- Add separate timeout configuration for PDF downloads (5 minutes)
+- Add timeout configuration for large file operations
+
+**Rationale**: Large PDFs can take significant time to download and parse, especially when NSE servers are slow.
+
+---
+
+#### [MODIFY] [pdf-parser.ts](file:///c:/Users/HP/NSE/NSEClientManager/server/services/nse-scraper/pdf-parser.ts)
+
+**Changes**:
+- Add `detectPDFType()` function to classify PDFs as "notification", "results", or "unknown"
+- Implement keyword detection for notification PDFs:
+  - "call with media", "earnings call", "conference call"
+  - "will host", "will discuss", "will be held"
+  - "dial-in details", "pre-registration", "universal dial-ins"
+  - "toll-free dial numbers"
+- Add early exit if PDF is detected as notification
+- Return PDF type in [FinancialMetrics](file:///c:/Users/HP/NSE/NSEClientManager/server/services/nse-scraper/pdf-parser.ts#10-23) interface
+- Increase internal parsing timeout
+
+**Rationale**: Prevents processing of notification PDFs that don't contain financial data.
+
+---
+
+#### [MODIFY] [results-scraper.ts](file:///c:/Users/HP/NSE/NSEClientManager/server/services/nse-scraper/results-scraper.ts)
+
+**Changes**:
+- Import announcement detector functions
+- Add **early announcement type detection** using subject and description fields (BEFORE downloading PDF)
+- Filter announcements in [scrapeResultsCalendar()](file:///c:/Users/HP/NSE/NSEClientManager/server/services/nse-scraper/results-scraper.ts#10-83):
+  - Skip announcements with subject "General Updates" 
+  - Prioritize announcements with subject "Outcome of Board Meeting"
+  - Use description field to detect "Call with Media" vs "submitted to the Exchange"
+- Update [processAnnouncement()](file:///c:/Users/HP/NSE/NSEClientManager/server/services/nse-scraper/results-scraper.ts#84-300) flow:
+  1. **Check announcement metadata** (subject + description)
+  2. If notification detected → Extract result declaration date, store as notification type, skip PDF processing
+  3. If results detected → Proceed with PDF download and parsing
+  4. If unknown → Download PDF and analyze content as fallback
+- Add announcement type to calendar entry creation
+- Store result declaration date for notifications
+- Enhanced logging showing:
+  - Announcement subject
+  - Announcement description
+  - Detected type (notification/results/unknown)
+  - Action taken (skipped/processed)
+
+**Example Log Output**:
+```
+[Results Scraper] Processing ICICIBANK announcement
+  Subject: General Updates
+  Description: has informed the Exchange about Call with Media...
+  Type: NOTIFICATION
+  Action: Skipping PDF processing, storing notification entry
+  
+[Results Scraper] Processing ICICIBANK announcement  
+  Subject: Outcome of Board Meeting
+  Description: submitted to the Exchange, the unaudited financial results...
+  Type: RESULTS
+  Action: Downloading and parsing PDF
+```
+
+**Rationale**: By checking announcement metadata first, we avoid downloading and parsing notification PDFs entirely, saving time and bandwidth. Only actual result announcements trigger PDF processing.
+
+---
+
+
+#### [NEW] [announcement-detector.ts](file:///c:/Users/HP/NSE/NSEClientManager/server/services/nse-scraper/announcement-detector.ts)
+
+**Purpose**: Centralized announcement detection and classification logic based on NSE announcement structure.
+
+**Detection Strategy**:
+1. **Primary Detection**: Analyze announcement subject and description fields (before downloading PDF)
+2. **Secondary Detection**: Analyze PDF content if subject/description are ambiguous
+3. **Scoring System**: Assign relevance scores to prioritize actual results over notifications
+
+**Functions**:
+
+- `detectAnnouncementType(announcement: any)`: Classify announcement type based on subject and description
+  - Returns: "notification" | "results" | "unknown"
+  - **Notification Indicators**:
+    - Subject contains: "General Updates", "Intimation", "Announcement"
+    - Description contains: "Call with Media", "has informed the Exchange about", "will host", "conference call", "earnings call", "dial-in details"
+  - **Results Indicators**:
+    - Subject contains: "Outcome of Board Meeting", "Financial Results", "Quarterly Results"
+    - Description contains: "submitted to the Exchange", "unaudited financial results", "financial results (standalone and consolidated)", "audited results"
+
+- `extractResultDeclarationDate(description: string)`: Extract when results will be published from notification text
+  - Parses dates from phrases like "on October 18, 2025" or "dated 18-Oct-2025"
+
+- `isNotificationAnnouncement(subject: string, description: string)`: Check if announcement is a notification
+  - Returns true if subject is "General Updates" OR description contains notification keywords
+
+- `isResultsAnnouncement(subject: string, description: string)`: Check if announcement contains actual results
+  - Returns true if subject is "Outcome of Board Meeting" OR description contains "submitted to the Exchange"
+
+- `scoreAnnouncementRelevance(announcement: any)`: Score announcements to prioritize actual results
+  - Score 100: "Outcome of Board Meeting" + "submitted to the Exchange"
+  - Score 50: Has financial result keywords but ambiguous subject
+  - Score 10: "General Updates" or notification keywords
+  - Score 0: No relevant keywords
+
+- `validatePDFContent(pdfText: string, announcementType: string)`: Validate PDF content matches announcement type
+  - Cross-check PDF content with detected announcement type
+  - Warn if mismatch detected
+
+**Rationale**: By analyzing the announcement metadata (subject and description) BEFORE downloading PDFs, we can filter out notifications early and save bandwidth and processing time.
+
+---
+
+
+### Database Schema Changes
+
+#### [MODIFY] [schema.ts](file:///c:/Users/HP/NSE/NSEClientManager/shared/schema.ts)
+
+**Changes to `resultsCalendar` table**:
+- Add `announcementType` field: "notification" | "results" | "unknown"
+- Add `resultDeclarationDate` field: Date when results will be published (extracted from notifications)
+- Add `pdfType` field: Type of PDF attached
+- Add `notificationText` field: Store notification text for reference
+
+**Rationale**: Allows tracking of both notification and result announcements separately.
+
+---
+
+### Client-Side Changes
+
+#### [MODIFY] [calendar.tsx](file:///c:/Users/HP/NSE/NSEClientManager/client/src/pages/calendar.tsx)
+
+**Changes**:
+- Add "Announcement Type" column to show notification vs results
+- Add "Declaration Date" column for notifications
+- Add filter dropdown for announcement types
+- Add badge component to visually distinguish announcement types
+- Color-code rows: 
+  - Green for actual results
+  - Yellow for notifications
+  - Gray for unknown
+- Add tooltip showing notification text on hover
+- Update table headers and sorting
+
+**Rationale**: Provides clear visibility into which announcements are notifications vs actual results.
+
+---
+
+#### [NEW] [announcement-type-badge.tsx](file:///c:/Users/HP/NSE/NSEClientManager/client/src/components/announcement-type-badge.tsx)
+
+**Purpose**: Reusable badge component for displaying announcement types.
+
+**Features**:
+- Color-coded badges (green/yellow/gray)
+- Icons for each type
+- Tooltips with descriptions
+
+---
+
+### API Changes
+
+#### [MODIFY] [calendar.ts](file:///c:/Users/HP/NSE/NSEClientManager/server/supabase/api/calendar.ts)
+
+**Changes**:
+- Include `announcementType`, `resultDeclarationDate`, and `pdfType` in API response
+- Add filtering support for announcement types
+- Sort results to show actual results first, then notifications
+
+**Rationale**: Provides frontend with necessary data to display announcement types.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+
+1. **Timeout Tests**:
+   ```bash
+   npm run test:scraper -- --timeout=360000
+   ```
+   - Verify PDF downloads complete within 5 minutes
+   - Test with large PDF files
+
+2. **Announcement Detection Tests**:
+   ```bash
+   npm run test:announcement-detector
+   ```
+   - Test notification PDF detection with ICICI sample
+   - Test results PDF detection with actual financial results
+   - Verify result declaration date extraction
+
+3. **Integration Tests**:
+   ```bash
+   npm run test:results-scraper
+   ```
+   - Test full scraping flow with mixed announcements
+   - Verify correct announcements are processed
+   - Check calendar entries have correct types
+
+### Manual Verification
+
+1. **ICICI Bank Test**:
+   - Trigger scraper for ICICI Bank
+   - Verify notification PDF (October 14, 2025) is detected as "notification"
+   - Verify result declaration date is extracted as "October 18, 2025"
+   - Verify actual results PDF (if available on Oct 18) is processed
+
+2. **Reliance Industries Test**:
+   - Trigger scraper for Reliance
+   - Verify correct announcement detection
+   - Check calendar dashboard displays both notification and results
+
+3. **Calendar Dashboard Test**:
+   - Open calendar page
+   - Verify announcement type column shows correct types
+   - Test filtering by announcement type
+   - Verify color coding is correct
+   - Check tooltips display notification text
+
+4. **Timeout Verification**:
+   - Monitor PDF download and parsing times in logs
+   - Verify no timeout errors for large PDFs
+   - Check all PDFs complete processing
+
+
+tcs,
