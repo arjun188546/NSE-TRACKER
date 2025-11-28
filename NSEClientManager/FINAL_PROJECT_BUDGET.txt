@@ -1,0 +1,354 @@
+================================================================================
+FINAL NSE STOCK TRACKER PROJECT BUDGET
+================================================================================
+
+Project: NSE Stock Analysis & Automation Platform
+Date: November 19, 2025
+Hourly Rate: Rs.2,200/hour
+Developer: Senior Full-Stack Developer (React, Node.js, Supabase, Financial Data)
+
+================================================================================
+BUDGET BREAKDOWN BY PHASE
+================================================================================
+
+--------------------------------------------------------------------------------
+PHASE 1: Requirements, Architecture & Planning
+--------------------------------------------------------------------------------
+Estimated Hours: 10-15 hours
+Tasks:
+- Project requirement analysis
+- System architecture design
+- Database schema planning
+- Technology stack finalization
+- Development roadmap creation
+
+Low Estimate:  10 hours x Rs.2,200 = Rs.22,000
+High Estimate: 15 hours x Rs.2,200 = Rs.33,000
+
+COST RANGE: Rs.22,000 - Rs.33,000
+
+--------------------------------------------------------------------------------
+PHASE 2: Automated Scraping + Monitoring Engine (Most Complex)
+--------------------------------------------------------------------------------
+Estimated Hours: 35-50 hours
+Tasks:
+- NSE API research & integration
+- HTTP client with retry logic and rate limiting
+- Results calendar scraper
+- Candlestick (OHLCV) data scraper
+- Delivery volume data scraper
+- Error handling and monitoring
+- Job scheduling system
+
+Low Estimate:  35 hours x Rs.2,200 = Rs.77,000
+High Estimate: 50 hours x Rs.2,200 = Rs.1,10,000
+
+COST RANGE: Rs.77,000 - Rs.1,10,000
+
+--------------------------------------------------------------------------------
+PHASE 3: PDF Parsing & Data Extraction Module
+--------------------------------------------------------------------------------
+Estimated Hours: 20-30 hours
+Tasks:
+- PDF download automation
+- Table detection in PDFs
+- Financial metrics extraction (Revenue, Profit, EPS, etc.)
+- Multiple PDF format handling
+- OCR fallback for scanned documents
+- Data validation and sanity checks
+- QoQ/YoY calculation logic
+
+Low Estimate:  20 hours x Rs.2,200 = Rs.44,000
+High Estimate: 30 hours x Rs.2,200 = Rs.66,000
+
+COST RANGE: Rs.44,000 - Rs.66,000
+
+--------------------------------------------------------------------------------
+PHASE 4: Database + API Layer
+--------------------------------------------------------------------------------
+Estimated Hours: 15-25 hours
+Tasks:
+- Supabase PostgreSQL setup
+- Database schema implementation (7 tables)
+- API endpoint development
+- Calendar endpoints with filters
+- Stock detail endpoints (3-window data)
+- User management APIs
+- Authentication and authorization
+- Query optimization
+
+Low Estimate:  15 hours x Rs.2,200 = Rs.33,000
+High Estimate: 25 hours x Rs.2,200 = Rs.55,000
+
+COST RANGE: Rs.33,000 - Rs.55,000
+
+--------------------------------------------------------------------------------
+PHASE 5: Dashboard UI (Calendar + Symbol List + Filters)
+--------------------------------------------------------------------------------
+Estimated Hours: 10-18 hours
+Tasks:
+- Date strip component with earnings counts
+- Results table with sorting
+- Multi-select filters (sector, status)
+- Search functionality
+- Color-coded status badges
+- Responsive design
+- Loading states and animations
+
+Low Estimate:  10 hours x Rs.2,200 = Rs.22,000
+High Estimate: 18 hours x Rs.2,200 = Rs.39,600
+
+COST RANGE: Rs.22,000 - Rs.39,600
+
+--------------------------------------------------------------------------------
+PHASE 6: Symbol Detail Page - 3 Windows
+--------------------------------------------------------------------------------
+Estimated Hours: 25-40 hours
+Tasks:
+- 3-column layout design
+- Window 1: Quarterly Results Comparison (QoQ/YoY)
+- Window 2: Candlestick Chart with indicators (EMA, RSA, Volume)
+- Window 3: Delivery Volume Table (21+ days)
+- Interactive charts integration
+- Data visualization
+- Real-time updates
+- Responsive design
+
+Low Estimate:  25 hours x Rs.2,200 = Rs.55,000
+High Estimate: 40 hours x Rs.2,200 = Rs.88,000
+
+COST RANGE: Rs.55,000 - Rs.88,000
+
+--------------------------------------------------------------------------------
+PHASE 7: Testing, Debugging & Fixing
+--------------------------------------------------------------------------------
+Estimated Hours: 8-12 hours
+Tasks:
+- Unit testing
+- Integration testing
+- Bug fixing
+- Performance optimization
+- Cross-browser testing
+- User acceptance testing
+
+Low Estimate:  8 hours x Rs.2,200 = Rs.17,600
+High Estimate: 12 hours x Rs.2,200 = Rs.26,400
+
+COST RANGE: Rs.17,600 - Rs.26,400
+
+--------------------------------------------------------------------------------
+PHASE 8: Deployment + Server Setup
+--------------------------------------------------------------------------------
+Estimated Hours: 5-10 hours
+Tasks:
+- Production server setup
+- Environment configuration
+- SSL certificate installation
+- Database migration
+- Performance monitoring setup
+- Documentation
+
+Low Estimate:  5 hours x Rs.2,200 = Rs.11,000
+High Estimate: 10 hours x Rs.2,200 = Rs.22,000
+
+COST RANGE: Rs.11,000 - Rs.22,000
+
+================================================================================
+TOTAL PROJECT COST SUMMARY
+================================================================================
+
+Phase Breakdown:
+--------------------------------------------------------------------------------
+Phase 1: Requirements & Planning           Rs.22,000  - Rs.33,000
+Phase 2: Scraping Engine                   Rs.77,000  - Rs.1,10,000
+Phase 3: PDF Parsing                       Rs.44,000  - Rs.66,000
+Phase 4: Database + API                    Rs.33,000  - Rs.55,000
+Phase 5: Dashboard UI                      Rs.22,000  - Rs.39,600
+Phase 6: Symbol Detail (3 Windows)         Rs.55,000  - Rs.88,000
+Phase 7: Testing & Debugging               Rs.17,600  - Rs.26,400
+Phase 8: Deployment                        Rs.11,000  - Rs.22,000
+--------------------------------------------------------------------------------
+
+TOTAL HOURS:       128 - 200 hours
+HOURLY RATE:       Rs.2,200/hour
+
+LOW ESTIMATE:      Rs.2,81,600
+HIGH ESTIMATE:     Rs.4,40,000
+
+================================================================================
+RECOMMENDED PRICING
+================================================================================
+
+BUDGET RANGE: Rs.2,80,000 - Rs.4,40,000
+
+This range accounts for:
+- Varying complexity in implementation
+- Unexpected technical challenges
+- Additional refinements and iterations
+- NSE API changes requiring adjustments
+- PDF format variations across companies
+
+================================================================================
+PROJECT TIMELINE
+================================================================================
+
+Phase 1: Requirements & Architecture        3-4 days
+Phase 2: Scraper Engine Development         1.5-2.5 weeks
+Phase 3: PDF Parsing & Extraction           4-5 days
+Phase 4: Database + API Development         4-6 days
+Phase 5: UI (Dashboard + Symbol List)       1 week
+Phase 6: Symbol Detail Page (3 Windows)     1-1.5 weeks
+Phase 7: Testing & QA                       3-4 days
+Phase 8: Deployment & DevOps Setup          2-3 days
+
+TOTAL PROJECT DURATION: 6-8 weeks
+
+================================================================================
+PAYMENT TERMS (RECOMMENDED)
+================================================================================
+
+Option 1: Milestone-Based Payment
+- 30% upfront (Rs.84,000 - Rs.1,32,000)
+- 40% at mid-point completion (Rs.1,12,000 - Rs.1,76,000)
+- 30% upon final delivery (Rs.84,000 - Rs.1,32,000)
+
+Option 2: Phase-Based Payment
+- Payment after completion of each phase
+- Provides flexibility and progress visibility
+
+Option 3: Fixed Price
+- Agreed fixed amount: Rs.3,50,000 (mid-range estimate)
+- 50% upfront, 50% on delivery
+
+================================================================================
+DELIVERABLES
+================================================================================
+
+1. Complete source code (React + Node.js + TypeScript)
+2. Supabase PostgreSQL database with 7 tables
+3. NSE data scraping system (automated)
+4. PDF parsing and data extraction engine
+5. Interactive dashboard with calendar view
+6. 3-window stock detail page
+7. Admin panel for user management
+8. API documentation
+9. Deployment guide
+10. User manual
+
+================================================================================
+TECHNICAL STACK
+================================================================================
+
+Frontend:
+- React 18 + TypeScript
+- Vite (build tool)
+- TailwindCSS + shadcn/ui components
+- TanStack Query (state management)
+- lightweight-charts (candlestick charts)
+
+Backend:
+- Node.js + Express
+- TypeScript
+- Drizzle ORM
+
+Database:
+- Supabase PostgreSQL
+
+Scraping & Processing:
+- Axios (HTTP client)
+- Cheerio (HTML parsing)
+- pdf-parse (PDF extraction)
+- node-cron (job scheduling)
+
+================================================================================
+ASSUMPTIONS & EXCLUSIONS
+================================================================================
+
+INCLUDED:
+[TICK] All 8 phases as described
+[TICK] Automated NSE data scraping
+[TICK] PDF parsing for quarterly results
+[TICK] 3-window stock detail page
+[TICK] Calendar dashboard with filters
+[TICK] Admin panel
+[TICK] Testing and deployment
+[TICK] Basic documentation
+
+EXCLUDED:
+[X] Ongoing maintenance beyond initial delivery
+[X] Additional features not in original scope
+[X] Mobile app development
+[X] Third-party paid API subscriptions
+[X] Server hosting costs (client responsibility)
+[X] Domain and SSL certificate costs
+
+================================================================================
+RISK FACTORS
+================================================================================
+
+1. NSE Website Changes: NSE may change their website structure, requiring 
+   scraper adjustments (2-5 additional hours if occurs)
+
+2. PDF Format Variations: Different companies use different accounting formats,
+   may require manual review queue (included in Phase 3 estimate)
+
+3. Performance Issues: Large data volumes may require optimization 
+   (buffer included in estimates)
+
+4. Anti-Scraping Measures: NSE may implement blocking, may need proxy rotation
+   (2-4 additional hours if required)
+
+================================================================================
+CURRENT PROJECT STATUS
+================================================================================
+
+COMPLETED (Phase 1):
+[TICK] Database schema designed
+[TICK] Supabase configured
+[TICK] Basic authentication implemented
+[TICK] Initial project structure created
+[TICK] Requirements documented
+
+ESTIMATED COMPLETION: 15 hours already invested
+
+REMAINING WORK: Phases 2-8 (113-185 hours)
+
+REMAINING COST: Rs.2,48,600 - Rs.4,07,000
+
+================================================================================
+FINAL RECOMMENDATION
+================================================================================
+
+Recommended Budget: Rs.3,50,000 (fixed price)
+
+This mid-range estimate provides:
+- Balanced risk coverage
+- Quality development time
+- Flexibility for adjustments
+- Professional delivery standards
+- Adequate testing and deployment
+
+Alternative: Bill hourly at Rs.2,200/hour with 200-hour cap (Rs.4,40,000 max)
+
+================================================================================
+APPROVAL & NEXT STEPS
+================================================================================
+
+Once budget is approved:
+
+1. Finalize payment terms and contract
+2. Begin Phase 2 (Scraping Engine) immediately
+3. Weekly progress updates and demos
+4. Iterative feedback and adjustments
+5. Final delivery in 6-8 weeks
+
+================================================================================
+CONTACT & QUESTIONS
+================================================================================
+
+For any clarifications or scope adjustments, please discuss before project 
+commencement to ensure accurate budgeting and timeline estimation.
+
+================================================================================
+END OF BUDGET DOCUMENT
+================================================================================
