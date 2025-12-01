@@ -160,11 +160,14 @@ export async function fetchMultipleStockPrices(symbols: string[], useCache = tru
 
 /**
  * Update stock prices in storage
+ * @param symbols - Array of stock symbols to update
+ * @param useCache - Whether to use cache (true for live updates, false for EOD capture)
  */
-export async function updateStoredPrices(symbols: string[]): Promise<void> {
-  console.log(`[Price Fetcher] Updating prices for ${symbols.length} stocks...`);
+export async function updateStoredPrices(symbols: string[], useCache: boolean = true): Promise<void> {
+  const cacheStatus = useCache ? 'with cache' : 'fresh from NSE';
+  console.log(`[Price Fetcher] Updating prices for ${symbols.length} stocks (${cacheStatus})...`);
   
-  const priceMap = await fetchMultipleStockPrices(symbols);
+  const priceMap = await fetchMultipleStockPrices(symbols, useCache);
   
   // Convert to array to avoid iterator issues
   const priceEntries = Array.from(priceMap.entries());
@@ -190,6 +193,7 @@ export async function updateStoredPrices(symbols: string[]): Promise<void> {
           totalTradedValue: priceData.totalTradedValue,
           totalTradedVolume: priceData.totalTradedVolume,
           averagePrice: priceData.averagePrice,
+          lastLivePriceUpdate: priceData.lastUpdated,
         });
         console.log(`[Price Fetcher] ✅ Updated ${symbol}: LTP ₹${priceData.lastTradedPrice} @ ${priceData.lastTradedTime} (${priceData.percentChange}%) | Vol: ${priceData.totalTradedVolume.toLocaleString()}`);
       }

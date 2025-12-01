@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { BarChart3, Calendar } from "lucide-react";
+import { BarChart3, Calendar, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
@@ -23,6 +23,11 @@ const navItems: NavItem[] = [
         title: "Results Calendar",
         href: "/calendar",
         icon: Calendar,
+    },
+    {
+        title: "NSE Stocks",
+        href: "/nse-stocks",
+        icon: Building2,
     },
 ];
 

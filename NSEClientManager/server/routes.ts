@@ -5,8 +5,178 @@ import { loginSchema } from "@shared/schema";
 import { requireAuth, requireAdmin, requireActiveSubscription, checkAndEnforceDemoExpiry, sanitizeUser } from "./auth-middleware";
 import { triggerResultsScrape, getScraperStatus, getScraperMetrics, scrapeCandlestickData, scrapeDeliveryVolume, fetchStockPrice, updateStoredPrices, pauseJob, resumeJob } from "./services/nse-scraper";
 import { priceUpdateService } from "./services/price-update-service";
+import { monitorPublishedResults, processResultPublication } from "./services/results-engine";
+import { scrapeIncrementalCandlestickData } from "./services/nse-scraper/candlestick-scraper";
+import { scrapeIncrementalDeliveryData } from "./services/nse-scraper/delivery-scraper";
+import { scrapeQuarterlyFinancials } from "./services/nse-scraper/quarterly-financials-scraper";
+
+// Vercel Cron secret for authentication
+const CRON_SECRET = process.env.CRON_SECRET || 'your-secret-key-change-in-production';
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ============================================================================
+  // VERCEL CRON ENDPOINTS
+  // These endpoints are called by Vercel Cron on schedule
+  // Secured with CRON_SECRET to prevent unauthorized access
+  // ============================================================================
+
+  // Results Calendar Cron - Every 30 min (9AM-8PM IST, Mon-Fri)
+  app.get("/api/cron/results-calendar", async (req, res) => {
+    try {
+      // Verify cron secret
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${CRON_SECRET}`) {
+        console.log('[Cron] Unauthorized results-calendar request');
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      console.log('[Cron] Running results calendar scrape...');
+      const publishedResults = await monitorPublishedResults();
+      
+      let successCount = 0;
+      for (const publication of publishedResults) {
+        const success = await processResultPublication(publication);
+        if (success) successCount++;
+      }
+
+      res.json({ 
+        success: true, 
+        message: `Processed ${successCount} results`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[Cron] Results calendar failed:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Live Prices Cron - Every 2 min (9AM-3:30PM IST, Mon-Fri)
+  app.get("/api/cron/live-prices", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${CRON_SECRET}`) {
+        console.log('[Cron] Unauthorized live-prices request');
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      console.log('[Cron] Running live price updates...');
+      const stocks = await storage.getAllStocks();
+      const symbols = stocks.map(s => s.symbol);
+      
+      await updateStoredPrices(symbols, true); // Use cache
+      
+      res.json({ 
+        success: true, 
+        message: `Updated ${symbols.length} stock prices`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[Cron] Live prices failed:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Price Refresh Cron - Every 30 min (24/7)
+  app.get("/api/cron/price-refresh", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${CRON_SECRET}`) {
+        console.log('[Cron] Unauthorized price-refresh request');
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      console.log('[Cron] Running price refresh...');
+      const stocks = await storage.getAllStocks();
+      const symbols = stocks.map(s => s.symbol);
+      
+      if (symbols.length > 0) {
+        await updateStoredPrices(symbols, true);
+      }
+      
+      res.json({ 
+        success: true, 
+        message: `Refreshed ${symbols.length} stock prices`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[Cron] Price refresh failed:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Candlesticks Cron - Daily at 4:30 PM IST (Mon-Fri)
+  app.get("/api/cron/candlesticks", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${CRON_SECRET}`) {
+        console.log('[Cron] Unauthorized candlesticks request');
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      console.log('[Cron] Running candlestick data scrape...');
+      const rows = await scrapeIncrementalCandlestickData();
+      
+      res.json({ 
+        success: true, 
+        message: `Scraped ${rows} candlestick records`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[Cron] Candlesticks failed:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delivery Volume Cron - Daily at 4:35 PM IST (Mon-Fri)
+  app.get("/api/cron/delivery-volume", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${CRON_SECRET}`) {
+        console.log('[Cron] Unauthorized delivery-volume request');
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      console.log('[Cron] Running delivery volume scrape...');
+      const rows = await scrapeIncrementalDeliveryData();
+      
+      res.json({ 
+        success: true, 
+        message: `Scraped ${rows} delivery records`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[Cron] Delivery volume failed:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Quarterly Financials Cron - Daily at 5:00 PM IST (Mon-Fri)
+  app.get("/api/cron/quarterly-financials", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${CRON_SECRET}`) {
+        console.log('[Cron] Unauthorized quarterly-financials request');
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      console.log('[Cron] Running quarterly financials scrape...');
+      const rows = await scrapeQuarterlyFinancials();
+      
+      res.json({ 
+        success: true, 
+        message: `Scraped ${rows} quarterly results`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('[Cron] Quarterly financials failed:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================================================
+  // REGULAR API ENDPOINTS
+  // ============================================================================
+
   // Authentication endpoints
   app.post("/api/auth/login", async (req, res) => {
     try {
@@ -123,46 +293,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ user: sanitizeUser(checkedUser) });
   });
 
-  // Helper function to check if prices need refresh (older than 2 minutes)
+  // Helper function to check if market is currently open (9:15 AM - 3:30 PM IST, Mon-Fri)
+  function isMarketOpen(): boolean {
+    const now = new Date();
+    const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const day = istTime.getDay();
+    const hour = istTime.getHours();
+    const minute = istTime.getMinutes();
+    
+    // Weekend check
+    if (day === 0 || day === 6) return false;
+    
+    // Market hours: 9:15 AM to 3:30 PM
+    const currentTimeMinutes = hour * 60 + minute;
+    const marketOpen = 9 * 60 + 15;
+    const marketClose = 15 * 60 + 30;
+    
+    return currentTimeMinutes >= marketOpen && currentTimeMinutes <= marketClose;
+  }
+
+  // Helper function to check if prices need refresh
+  // Only refresh during market hours OR if data is very old (>1 day)
   function needsPriceRefresh(stocks: any[]): boolean {
     if (stocks.length === 0) return false;
+    
+    const marketOpen = isMarketOpen();
+    
     return stocks.some(stock => {
-      if (!stock.lastUpdated) return true;
+      if (!stock.lastUpdated) return marketOpen; // Only fetch if market is open
+      
       const lastUpdate = new Date(stock.lastUpdated);
-      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-      return lastUpdate < twoMinutesAgo;
+      const now = Date.now();
+      const twoMinutesAgo = now - 2 * 60 * 1000;
+      const oneDayAgo = now - 24 * 60 * 60 * 1000;
+      
+      // If market is closed, only refresh if data is older than 1 day
+      if (!marketOpen) {
+        return lastUpdate.getTime() < oneDayAgo;
+      }
+      
+      // If market is open, refresh if older than 2 minutes
+      return lastUpdate.getTime() < twoMinutesAgo;
     });
   }
 
   // Stock endpoints - require active subscription
   app.get("/api/stocks/portfolio", requireActiveSubscription, async (req, res) => {
     try {
-      let stocks = await storage.getPortfolioStocks(10);
+      const { supabase } = await import('./supabase/config/supabase-client');
+      
+      // Get user's portfolio from Supabase using manual join approach
+      const userId = '1c779f94-1e78-4a56-a637-3470df6d19b6'; // Demo user ID
+      
+      // First get the portfolio stock IDs
+      const { data: portfolioData, error: portfolioError } = await supabase
+        .from('user_portfolio')
+        .select('stock_id')
+        .eq('user_id', userId);
 
-      // Only refresh if prices are older than 2 minutes (cache saves API calls)
-      if (needsPriceRefresh(stocks)) {
-        console.log('[Routes] Portfolio prices stale (>2 min), refreshing...');
-        try {
-          const { updateStoredPrices } = await import('./services/nse-scraper/price-fetcher');
-          const symbols = stocks.map(s => s.symbol);
-          await updateStoredPrices(symbols);
-          // Refetch stocks with updated prices
-          stocks = await storage.getPortfolioStocks(10);
-          console.log('[Routes] Portfolio prices refreshed');
-        } catch (err: any) {
-          console.error('[Routes] Price refresh failed:', err.message);
-          // Continue with existing data
-        }
-      } else {
-        console.log('[Routes] Portfolio prices fresh (<2 min), using cached data');
+      if (portfolioError || !portfolioData || portfolioData.length === 0) {
+        console.log('Portfolio table not ready or empty, falling back to original 10 stocks');
+        // Fallback to original 10 stocks
+        const originalStocks = ['TCS', 'INFY', 'TATASTEEL', 'ICICIBANK', 'HDFCBANK', 'RELIANCE', 'ITC', 'LT', 'WIPRO', 'BAJFINANCE'];
+        const { data: fallbackData } = await supabase
+          .from('stocks')
+          .select('*')
+          .in('symbol', originalStocks);
+        
+        const stocks = fallbackData?.map((item: any) => ({
+          id: item.id,
+          symbol: item.symbol,
+          companyName: item.company_name,
+          currentPrice: item.current_price,
+          percentChange: item.percent_change,
+          volume: item.volume,
+          lastTradedPrice: item.last_traded_price,
+          lastTradedQuantity: item.last_traded_quantity,
+          lastTradedTime: item.last_traded_time,
+          dayHigh: item.day_high,
+          dayLow: item.day_low,
+          openPrice: item.open_price,
+          previousClose: item.previous_close,
+          yearHigh: item.year_high,
+          yearLow: item.year_low,
+          totalBuyQuantity: item.total_buy_quantity,
+          totalSellQuantity: item.total_sell_quantity,
+          totalTradedValue: item.total_traded_value,
+          totalTradedVolume: item.total_traded_volume,
+          averagePrice: item.average_price,
+          sector: item.sector,
+          marketCap: item.market_cap,
+          lastUpdated: item.last_updated,
+        })) || [];
+        
+        return res.json(stocks);
       }
 
-      // No caching - always return fresh data
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
+      // Get stock IDs and fetch stock details
+      const stockIds = portfolioData.map(item => item.stock_id);
+      const { data: stocksData, error: stocksError } = await supabase
+        .from('stocks')
+        .select('*')
+        .in('id', stockIds);
+
+      if (stocksError) {
+        console.error('Error fetching portfolio stocks:', stocksError);
+        return res.status(500).json({ error: 'Failed to fetch portfolio stocks' });
+      }
+
+      // Transform portfolio data
+      const stocks = stocksData?.map((item: any) => ({
+        id: item.id,
+        symbol: item.symbol,
+        companyName: item.company_name,
+        currentPrice: item.current_price,
+        percentChange: item.percent_change,
+        volume: item.volume,
+        lastTradedPrice: item.last_traded_price,
+        lastTradedQuantity: item.last_traded_quantity,
+        lastTradedTime: item.last_traded_time,
+        dayHigh: item.day_high,
+        dayLow: item.day_low,
+        openPrice: item.open_price,
+        previousClose: item.previous_close,
+        yearHigh: item.year_high,
+        yearLow: item.year_low,
+        totalBuyQuantity: item.total_buy_quantity,
+        totalSellQuantity: item.total_sell_quantity,
+        totalTradedValue: item.total_traded_value,
+        totalTradedVolume: item.total_traded_volume,
+        averagePrice: item.average_price,
+        sector: item.sector,
+        marketCap: item.market_cap,
+        lastUpdated: item.last_updated,
+      })) || [];
+
       res.json(stocks);
     } catch (error) {
+      console.error("Failed to fetch portfolio stocks:", error);
       res.status(500).json({ error: "Failed to fetch portfolio stocks" });
     }
   });
@@ -173,7 +441,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Only refresh if prices are older than 2 minutes (cache saves API calls)
       if (needsPriceRefresh(stocks)) {
-        console.log('[Routes] Top performers stale (>2 min), refreshing...');
+        const marketStatus = isMarketOpen() ? 'OPEN' : 'CLOSED';
+        console.log(`[Routes] Top performers stale, refreshing... (Market: ${marketStatus})`);
         try {
           const { updateStoredPrices } = await import('./services/nse-scraper/price-fetcher');
           const symbols = stocks.map(s => s.symbol);
@@ -185,7 +454,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error('[Routes] Price refresh failed:', err.message);
         }
       } else {
-        console.log('[Routes] Top performers fresh (<2 min), using cached data');
+        const dataSource = isMarketOpen() ? 'cached' : 'stored (market closed)';
+        console.log(`[Routes] Top performers fresh, using ${dataSource} data`);
       }
 
       // No caching
@@ -198,14 +468,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all NSE stocks with watchlist status (MUST be before /:symbol route)
+  app.get("/api/stocks/nse-all", requireActiveSubscription, async (req, res) => {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      // Get all stocks from the database  
+      const { supabase } = await import('./supabase/config/supabase-client');
+      const { data: allStocks, error: stocksError } = await supabase
+        .from('stocks')
+        .select(`
+          id,
+          symbol,
+          company_name,
+          sector,
+          market_cap,
+          current_price,
+          percent_change,
+          last_updated
+        `)
+        .order('symbol', { ascending: true });
+
+      if (stocksError) {
+        console.error('Error fetching stocks:', stocksError);
+        return res.status(500).json({ error: 'Failed to fetch stocks' });
+      }
+
+      // Get user's watchlist to determine which stocks are already added
+      const { data: watchlistStocks, error: watchlistError } = await supabase
+        .from('user_portfolio')
+        .select('stock_id')
+        .eq('user_id', user.id);
+
+      if (watchlistError) {
+        console.error('Error fetching watchlist:', watchlistError);
+        return res.status(500).json({ error: 'Failed to fetch watchlist' });
+      }
+
+      const watchlistStockIds = new Set(watchlistStocks?.map(item => item.stock_id) || []);
+
+      // Transform data for frontend
+      const nseStocks = allStocks?.map(stock => ({
+        id: stock.id,
+        symbol: stock.symbol,
+        companyName: stock.company_name,
+        sector: stock.sector || 'Other',
+        marketCap: stock.market_cap,
+        currentPrice: stock.current_price,
+        percentChange: stock.percent_change,
+        inWatchlist: watchlistStockIds.has(stock.id),
+        lastUpdated: stock.last_updated
+      })) || [];
+
+      res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60');
+      res.json(nseStocks);
+
+    } catch (error) {
+      console.error('Error in /nse-all endpoint:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.get("/api/stocks/:symbol", requireActiveSubscription, async (req, res) => {
     try {
       const { symbol } = req.params;
       
-      // Check if price needs refresh
+      // Check if price needs refresh based on market status
       const stock = await storage.getStockBySymbol(symbol);
       if (stock && needsPriceRefresh([stock])) {
-        console.log(`[Routes] Price for ${symbol} stale (>2 min), refreshing...`);
+        const marketStatus = isMarketOpen() ? 'OPEN' : 'CLOSED';
+        console.log(`[Routes] Price for ${symbol} stale, refreshing... (Market: ${marketStatus})`);
         try {
           const { updateStoredPrices } = await import('./services/nse-scraper/price-fetcher');
           await updateStoredPrices([symbol]);
@@ -214,7 +549,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error(`[Routes] Price refresh failed for ${symbol}:`, err.message);
         }
       } else if (stock) {
-        console.log(`[Routes] Price for ${symbol} fresh (<2 min), using cached data`);
+        const dataSource = isMarketOpen() ? 'cached' : 'stored (market closed)';
+        console.log(`[Routes] Price for ${symbol} fresh, using ${dataSource} data`);
       }
       
       const stockDetail = await storage.getStockDetail(symbol);
@@ -454,6 +790,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to search stocks" });
+    }
+  });
+
+  // Add stock to user's portfolio/watchlist
+  app.post("/api/stocks/:stockId/add-to-portfolio", requireActiveSubscription, async (req, res) => {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { stockId } = req.params;
+
+      const { supabase } = await import('./supabase/config/supabase-client');
+
+      // Check if stock exists
+      const { data: stock, error: stockError } = await supabase
+        .from('stocks')
+        .select('id, symbol, company_name')
+        .eq('id', stockId)
+        .single();
+
+      if (stockError || !stock) {
+        return res.status(404).json({ error: 'Stock not found' });
+      }
+
+      // Check if already in portfolio
+      const { data: existing } = await supabase
+        .from('user_portfolio')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('stock_id', stockId)
+        .single();
+
+      if (existing) {
+        return res.status(400).json({ error: 'Stock already in watchlist' });
+      }
+
+      // Add to portfolio
+      const { error: insertError } = await supabase
+        .from('user_portfolio')
+        .insert({
+          user_id: user.id,
+          stock_id: stockId,
+          added_at: new Date().toISOString()
+        });
+
+      if (insertError) {
+        console.error('Error adding to portfolio:', insertError);
+        return res.status(500).json({ error: 'Failed to add stock to watchlist' });
+      }
+
+      res.json({ 
+        success: true, 
+        message: `${stock.symbol} added to watchlist` 
+      });
+
+    } catch (error) {
+      console.error('Error in add-to-portfolio endpoint:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Remove stock from user's portfolio/watchlist
+  app.delete("/api/stocks/:stockId/remove-from-portfolio", requireActiveSubscription, async (req, res) => {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { stockId } = req.params;
+
+      const { supabase } = await import('./supabase/config/supabase-client');
+
+      // Get stock info for response
+      const { data: stock } = await supabase
+        .from('stocks')
+        .select('symbol, company_name')
+        .eq('id', stockId)
+        .single();
+
+      // Remove from portfolio
+      const { error: deleteError } = await supabase
+        .from('user_portfolio')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('stock_id', stockId);
+
+      if (deleteError) {
+        console.error('Error removing from portfolio:', deleteError);
+        return res.status(500).json({ error: 'Failed to remove stock from watchlist' });
+      }
+
+      res.json({ 
+        success: true, 
+        message: stock ? `${stock.symbol} removed from watchlist` : 'Stock removed from watchlist'
+      });
+
+    } catch (error) {
+      console.error('Error in remove-from-portfolio endpoint:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -818,7 +1256,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/prices/status", requireAuth, async (_req, res) => {
+  // Public endpoint - no auth required (used by frontend before login)
+  app.get("/api/prices/status", async (_req, res) => {
     try {
       res.json(priceUpdateService.getStatus());
     } catch (error) {

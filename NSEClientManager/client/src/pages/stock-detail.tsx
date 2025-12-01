@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation, useRoute, Link } from "wouter";
@@ -20,7 +21,6 @@ import {
   TrendingDown,
 } from "lucide-react";
 import { StockDetail } from "@shared/schema";
-import { useState } from 'react';
 import { CandlesTV } from '@/components/charts/CandlesTV';
 import { DeliveryDailyTable } from '@/components/charts/DeliveryDailyTable';
 import { QuarterlyPerformance } from '@/components/quarterly-performance';
@@ -28,7 +28,12 @@ import { QuarterlyPerformance } from '@/components/quarterly-performance';
 export default function StockDetailPage() {
   const { user, hasActiveSubscription, isDemoMode, isLoading } = useAuth();
   const [, params] = useRoute("/stock/:symbol");
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
+  
+  // Get tab from URL query parameter
+  const urlParams = new URLSearchParams(location.split('?')[1] || '');
+  const initialTab = urlParams.get('tab') || 'results';
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const canAccessFeatures = hasActiveSubscription || isDemoMode;
 
@@ -37,6 +42,13 @@ export default function StockDetailPage() {
     queryKey: ["/api/stocks", params?.symbol],
     enabled: !isLoading && !!user && !!params?.symbol && canAccessFeatures,
   });
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoading && !user) {
+      setLocation("/");
+    }
+  }, [isLoading, user, setLocation]);
 
   // Show loading while validating session
   if (isLoading) {
@@ -51,7 +63,6 @@ export default function StockDetailPage() {
   }
 
   if (!user) {
-    setLocation("/");
     return null;
   }
 
@@ -241,7 +252,7 @@ export default function StockDetailPage() {
               </Card>
 
               {/* Three Panel View */}
-              <Tabs defaultValue="results" className="space-y-4">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="results" data-testid="tab-results">
                     Quarterly Results

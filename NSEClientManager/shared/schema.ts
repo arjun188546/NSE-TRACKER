@@ -160,6 +160,14 @@ export const livePrices = pgTable("live_prices", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+// User Portfolio - watchlist functionality
+export const userPortfolio = pgTable("user_portfolio", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  stockId: varchar("stock_id").notNull().references(() => stocks.id),
+  addedAt: timestamp("added_at").notNull().default(sql`now()`),
+});
+
 // Insert schemas
 export const insertScrapingJobSchema = createInsertSchema(scrapingJobs).omit({
   id: true,
@@ -199,6 +207,11 @@ export const insertLivePriceSchema = createInsertSchema(livePrices).omit({
   createdAt: true,
 });
 
+export const insertUserPortfolioSchema = createInsertSchema(userPortfolio).omit({
+  id: true,
+  addedAt: true,
+});
+
 // Login schema
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -230,6 +243,9 @@ export type DeliveryVolume = typeof deliveryVolume.$inferSelect;
 export type InsertLivePrice = z.infer<typeof insertLivePriceSchema>;
 export type LivePrice = typeof livePrices.$inferSelect;
 
+export type InsertUserPortfolio = z.infer<typeof insertUserPortfolioSchema>;
+export type UserPortfolio = typeof userPortfolio.$inferSelect;
+
 export type LoginData = z.infer<typeof loginSchema>;
 
 // Extended types with relations
@@ -241,4 +257,8 @@ export type StockDetail = Stock & {
   results?: QuarterlyResults;
   candlestickData?: CandlestickData[];
   deliveryVolume?: DeliveryVolume[];
+};
+
+export type StockWithWatchlistStatus = Stock & {
+  inWatchlist?: boolean;
 };

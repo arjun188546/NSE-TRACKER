@@ -14,6 +14,9 @@ import {
 import type { IStorage } from './storage';
 import type { CandlestickData, InsertCandlestickData, DeliveryVolume, InsertDeliveryVolume, LivePrice, InsertLivePrice } from '@shared/schema';
 
+// Export supabase client for direct database access
+export { supabase };
+
 // Helper functions to convert between camelCase and snake_case
 // Optimized with memoization for frequently accessed fields
 const caseConversionCache = new Map<string, string>();
@@ -25,10 +28,13 @@ function toSnakeCase(obj: any): any {
   for (const [key, value] of Object.entries(obj)) {
     let snakeKey = caseConversionCache.get(`s_${key}`);
     if (!snakeKey) {
-      // Handle consecutive capitals (like QoQ, YoY) - keep them together
+      // Special handling for QoQ and YoY - treat them as single units
       snakeKey = key
+        .replace(/QoQ/g, '_qoq')  // Handle QoQ
+        .replace(/YoY/g, '_yoy')  // Handle YoY
         .replace(/([a-z])([A-Z])/g, '$1_$2')  // Insert _ between lowercase and uppercase
         .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')  // Handle acronyms like "XMLParser" -> "XML_Parser"
+        .replace(/^_/, '')  // Remove leading underscore if it exists
         .toLowerCase();
       caseConversionCache.set(`s_${key}`, snakeKey);
     }
@@ -44,7 +50,11 @@ function toCamelCase(obj: any): any {
   for (const [key, value] of Object.entries(obj)) {
     let camelKey = caseConversionCache.get(`c_${key}`);
     if (!camelKey) {
-      camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      // Handle QoQ and YoY specially before general conversion
+      camelKey = key
+        .replace(/_qoq/g, 'QoQ')
+        .replace(/_yoy/g, 'YoY')
+        .replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
       caseConversionCache.set(`c_${key}`, camelKey);
     }
     camelCaseObj[camelKey] = value;

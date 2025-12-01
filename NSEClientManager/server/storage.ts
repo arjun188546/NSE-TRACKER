@@ -29,6 +29,7 @@ export interface IStorage {
   getStock(id: string): Promise<Stock | undefined>;
   getStockBySymbol(symbol: string): Promise<Stock | undefined>;
   getAllStocks(): Promise<Stock[]>;
+  getAllNSEStocks(limit?: number): Promise<Stock[]>;
   getTopPerformers(limit?: number): Promise<Stock[]>;
   getPortfolioStocks(limit?: number): Promise<Stock[]>;
   createStock(stock: InsertStock): Promise<Stock>;
@@ -112,7 +113,7 @@ export class MemStorage implements IStorage {
     this.users.set(client2Id, {
       id: client2Id,
       email: "demo@example.com",
-      password: "demo123",
+      password: "Demolition@123",
       role: "client",
       subscriptionStatus: "demo",
       demoExpiresAt: demoExpiry,
@@ -269,6 +270,12 @@ export class MemStorage implements IStorage {
     return Array.from(this.stocks.values());
   }
 
+  async getAllNSEStocks(limit?: number): Promise<Stock[]> {
+    // For MemStorage, return all stocks (fallback behavior)
+    const allStocks = Array.from(this.stocks.values());
+    return limit ? allStocks.slice(0, limit) : allStocks;
+  }
+
   async getTopPerformers(limit: number = 10): Promise<Stock[]> {
     return Array.from(this.stocks.values())
       .sort((a, b) => parseFloat(b.percentChange || "0") - parseFloat(a.percentChange || "0"))
@@ -276,7 +283,66 @@ export class MemStorage implements IStorage {
   }
 
   async getPortfolioStocks(limit: number = 10): Promise<Stock[]> {
-    return Array.from(this.stocks.values()).slice(0, limit);
+    try {
+      // Get the current user's portfolio from Supabase
+      const { data, error } = await this.supabase
+        .from('user_portfolio')
+        .select(`
+          stocks (
+            id,
+            symbol,
+            company_name,
+            current_price,
+            percent_change,
+            volume,
+            last_traded_price,
+            day_high,
+            day_low,
+            open_price,
+            previous_close,
+            year_high,
+            year_low,
+            sector,
+            market_cap,
+            last_updated
+          )
+        `)
+        .limit(limit);
+
+      if (error) {
+        console.error('Error fetching portfolio from Supabase:', error);
+        // Fallback to original 10 stocks if portfolio table doesn't exist yet
+        const originalStocksSymbols = ['TCS', 'INFY', 'TATASTEEL', 'ICICIBANK', 'HDFCBANK', 'RELIANCE', 'ITC', 'LT', 'WIPRO', 'BAJFINANCE'];
+        return Array.from(this.stocks.values()).filter(stock => 
+          originalStocksSymbols.includes(stock.symbol)
+        ).slice(0, limit);
+      }
+
+      // Transform the data to match Stock interface
+      const portfolioStocks = data?.map((item: any) => ({
+        id: item.stocks.id,
+        symbol: item.stocks.symbol,
+        companyName: item.stocks.company_name,
+        currentPrice: item.stocks.current_price ? parseFloat(item.stocks.current_price) : undefined,
+        percentChange: item.stocks.percent_change ? parseFloat(item.stocks.percent_change) : undefined,
+        volume: item.stocks.volume,
+        lastTradedPrice: item.stocks.last_traded_price ? parseFloat(item.stocks.last_traded_price) : undefined,
+        dayHigh: item.stocks.day_high ? parseFloat(item.stocks.day_high) : undefined,
+        dayLow: item.stocks.day_low ? parseFloat(item.stocks.day_low) : undefined,
+        openPrice: item.stocks.open_price ? parseFloat(item.stocks.open_price) : undefined,
+        previousClose: item.stocks.previous_close ? parseFloat(item.stocks.previous_close) : undefined,
+        yearHigh: item.stocks.year_high ? parseFloat(item.stocks.year_high) : undefined,
+        yearLow: item.stocks.year_low ? parseFloat(item.stocks.year_low) : undefined,
+        sector: item.stocks.sector,
+        marketCap: item.stocks.market_cap,
+        lastUpdated: new Date(item.stocks.last_updated || new Date()),
+      })) || [];
+
+      return portfolioStocks;
+    } catch (err) {
+      console.error('Error in getPortfolioStocks:', err);
+      return [];
+    }
   }
 
   async createStock(insertStock: InsertStock): Promise<Stock> {
@@ -289,6 +355,8 @@ export class MemStorage implements IStorage {
     this.stocks.set(id, stock);
     return stock;
   }
+
+
 
   async updateStock(id: string, updates: Partial<Stock>): Promise<Stock | undefined> {
     const stock = this.stocks.get(id);

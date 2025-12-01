@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation, Link } from "wouter";
@@ -42,6 +42,13 @@ export default function CalendarPage() {
     enabled: !isLoading && !!user && canAccessFeatures,
   });
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoading && !user) {
+      setLocation("/");
+    }
+  }, [isLoading, user, setLocation]);
+
   // Show loading while validating session
   if (isLoading) {
     return (
@@ -55,7 +62,6 @@ export default function CalendarPage() {
   }
 
   if (!user) {
-    setLocation("/");
     return null;
   }
 
@@ -204,7 +210,7 @@ export default function CalendarPage() {
 
                               return (
                                 <TableRow
-                                  key={stock.id}
+                                  key={`${stock.id}-${stock.calendar?.id || 'no-calendar'}`}
                                   className="hover-elevate cursor-pointer"
                                   onClick={() => setLocation(`/stock/${stock.symbol}`)}
                                   data-testid={`row-stock-${stock.symbol}`}

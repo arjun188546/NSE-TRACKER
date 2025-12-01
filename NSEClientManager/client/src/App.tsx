@@ -9,6 +9,7 @@ import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import CalendarPage from "@/pages/calendar";
+import NSEStocksPage from "@/pages/nse-stocks";
 import StockDetailPage from "@/pages/stock-detail";
 import AdminPage from "@/pages/admin";
 import NotFound from "@/pages/not-found";
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/calendar" component={CalendarPage} />
+      <Route path="/nse-stocks" component={NSEStocksPage} />
       <Route path="/stock/:symbol" component={StockDetailPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />

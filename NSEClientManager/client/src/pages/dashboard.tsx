@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
@@ -6,12 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { SubscriptionBanner } from "@/components/subscription-banner";
 import { StockCard } from "@/components/stock-card";
-import { TrendingUp, Calendar, BarChart3, Search } from "lucide-react";
+import { TrendingUp, Calendar, BarChart3, Search, Building2, Plus, Eye, EyeOff } from "lucide-react";
 import { Stock } from "@shared/schema";
 import { Link } from "wouter";
 import { useAutoRefreshPrices } from "@/hooks/use-live-prices";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 export default function Dashboard() {
   const { user, hasActiveSubscription, isDemoMode, isLoading } = useAuth();
@@ -25,22 +29,129 @@ export default function Dashboard() {
   const { data: portfolioStocks, isLoading: isLoadingPortfolio, refetch: refetchPortfolio } = useQuery<Stock[]>({
     queryKey: ["/api/stocks/portfolio"],
     enabled: !isLoading && !!user && canAccessFeatures,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: isMarketOpen ? 5000 : 30000, // Every 5s during market hours, 30s otherwise
     refetchOnWindowFocus: true, // Refetch when user switches back to tab
     refetchOnMount: true, // Always refetch on component mount
-    staleTime: 0, // Consider data stale immediately
+    staleTime: isMarketOpen ? 4000 : 0, // Fresh for 4s during market hours
     gcTime: 0, // Don't cache data when component unmounts
   });
 
   const { data: topPerformers, isLoading: isLoadingTop, refetch: refetchTopPerformers } = useQuery<Stock[]>({
     queryKey: ["/api/stocks/top-performers"],
     enabled: !isLoading && !!user && canAccessFeatures,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: isMarketOpen ? 5000 : 30000, // Every 5s during market hours, 30s otherwise
     refetchOnWindowFocus: true, // Refetch when user switches back to tab
     refetchOnMount: true, // Always refetch on component mount
-    staleTime: 0, // Consider data stale immediately
+    staleTime: isMarketOpen ? 4000 : 0, // Fresh for 4s during market hours
     gcTime: 0, // Don't cache data when component unmounts
   });
+
+  // Add NSE stocks functionality
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("watchlist");
+  const [selectedSector, setSelectedSector] = useState("All");
+
+  // Fetch all NSE stocks
+  const { data: nseStocksData, isLoading: isLoadingNSE } = useQuery({
+    queryKey: ["/api/stocks/nse-all"],
+    enabled: !isLoading && !!user && canAccessFeatures,
+    refetchInterval: isMarketOpen ? 5000 : 60000, // Every 5s during market hours, 1min otherwise
+    staleTime: isMarketOpen ? 4000 : 30000,
+  });
+
+  // Add to watchlist mutation
+  const addToWatchlistMutation = useMutation({
+    mutationFn: async (stockId: string) => {
+      const response = await fetch(`/api/stocks/${stockId}/add-to-portfolio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok) {
+        throw new Error("Failed to add stock to watchlist");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stocks/portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stocks/nse-all"] });
+      toast({
+        title: "Success",
+        description: "Stock added to watchlist",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to add stock to watchlist",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Remove from watchlist mutation
+  const removeFromWatchlistMutation = useMutation({
+    mutationFn: async (stockId: string) => {
+      const response = await fetch(`/api/stocks/${stockId}/remove-from-portfolio`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to remove stock from watchlist");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stocks/portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stocks/nse-all"] });
+      toast({
+        title: "Success",
+        description: "Stock removed from watchlist",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error", 
+        description: "Failed to remove stock from watchlist",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Helper functions
+  const handleToggleWatchlist = (stock: any) => {
+    if (stock.isInWatchlist) {
+      removeFromWatchlistMutation.mutate(stock.id);
+    } else {
+      addToWatchlistMutation.mutate(stock.id);
+    }
+  };
+
+  const getSectorColor = (sector: string) => {
+    const colors = {
+      Banking: "bg-blue-100 text-blue-800",
+      IT: "bg-purple-100 text-purple-800",
+      Pharmaceuticals: "bg-green-100 text-green-800",
+      Automobile: "bg-orange-100 text-orange-800",
+      Steel: "bg-gray-100 text-gray-800",
+      "Oil & Gas": "bg-yellow-100 text-yellow-800",
+      FMCG: "bg-pink-100 text-pink-800",
+      Telecom: "bg-indigo-100 text-indigo-800",
+      Power: "bg-red-100 text-red-800",
+      "Solar Energy": "bg-emerald-100 text-emerald-800",
+      Fintech: "bg-cyan-100 text-cyan-800",
+    };
+    return colors[sector as keyof typeof colors] || "bg-slate-100 text-slate-800";
+  };
+
+  const formatMarketCap = (marketCap?: number) => {
+    if (!marketCap) return "N/A";
+    if (marketCap >= 1000000) {
+      return `₹${(marketCap / 1000000).toFixed(1)}L Cr`;
+    } else if (marketCap >= 1000) {
+      return `₹${(marketCap / 1000).toFixed(1)}K Cr`;
+    }
+    return `₹${marketCap} Cr`;
+  };
 
   // Add visibility change listener to force refresh when tab becomes visible
   useEffect(() => {
@@ -56,6 +167,13 @@ export default function Dashboard() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [canAccessFeatures, refetchPortfolio, refetchTopPerformers]);
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isLoading && !user) {
+      setLocation("/");
+    }
+  }, [isLoading, user, setLocation]);
+
   // Show loading while validating session
   if (isLoading) {
     return (
@@ -69,7 +187,6 @@ export default function Dashboard() {
   }
 
   if (!user) {
-    setLocation("/");
     return null;
   }
 
@@ -80,6 +197,11 @@ export default function Dashboard() {
   );
 
   const filteredPortfolio = portfolioStocks?.filter((stock) =>
+    stock.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    stock.companyName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredNSEStocks = nseStocksData?.filter((stock) =>
     stock.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
     stock.companyName.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -220,41 +342,151 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Your Portfolio */}
+              {/* Stocks Section with Tabs */}
               <div className="space-y-4">
-                <div>
-                  <h2 className="text-2xl font-bold">Your Watchlist</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {searchQuery ? `${filteredPortfolio?.length || 0} results` : "Stocks you're tracking"}
-                  </p>
-                </div>
-                {isLoadingPortfolio ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3, 4].map((i) => (
-                      <Skeleton key={i} className="h-20" />
-                    ))}
-                  </div>
-                ) : filteredPortfolio && filteredPortfolio.length > 0 ? (
-                  <div className="space-y-3">
-                    {filteredPortfolio.map((stock) => (
-                      <StockCard key={stock.id} stock={stock} mini />
-                    ))}
-                  </div>
-                ) : searchQuery ? (
-                  <Card className="p-12">
-                    <div className="text-center text-muted-foreground">
-                      <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p>No watchlist stocks found matching "{searchQuery}"</p>
+                <Tabs defaultValue="watchlist" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="watchlist" className="flex items-center gap-2">
+                      <Eye className="w-4 h-4" />
+                      Watchlist ({filteredPortfolio?.length || 0})
+                    </TabsTrigger>
+                    <TabsTrigger value="all-stocks" className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4" />
+                      All NSE Stocks ({filteredNSEStocks?.length || 0})
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* Watchlist Tab */}
+                  <TabsContent value="watchlist" className="space-y-4">
+                    <div>
+                      <h2 className="text-2xl font-bold">Your Watchlist</h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {searchQuery ? `${filteredPortfolio?.length || 0} results` : "Stocks you're tracking"}
+                      </p>
                     </div>
-                  </Card>
-                ) : (
-                  <Card className="p-12">
-                    <div className="text-center text-muted-foreground">
-                      <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                      <p>Your watchlist is empty</p>
+                    {isLoadingPortfolio ? (
+                      <div className="space-y-3">
+                        {[1, 2, 3, 4].map((i) => (
+                          <Skeleton key={i} className="h-20" />
+                        ))}
+                      </div>
+                    ) : filteredPortfolio && filteredPortfolio.length > 0 ? (
+                      <div className="space-y-3">
+                        {filteredPortfolio.map((stock) => (
+                          <StockCard key={stock.id} stock={stock} mini />
+                        ))}
+                      </div>
+                    ) : searchQuery ? (
+                      <Card className="p-12">
+                        <div className="text-center text-muted-foreground">
+                          <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                          <p>No watchlist stocks found matching "{searchQuery}"</p>
+                        </div>
+                      </Card>
+                    ) : (
+                      <Card className="p-12">
+                        <div className="text-center text-muted-foreground">
+                          <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                          <p>Your watchlist is empty</p>
+                        </div>
+                      </Card>
+                    )}
+                  </TabsContent>
+
+                  {/* All NSE Stocks Tab */}
+                  <TabsContent value="all-stocks" className="space-y-4">
+                    <div>
+                      <h2 className="text-2xl font-bold">NSE Stocks Database</h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {searchQuery ? `${filteredNSEStocks?.length || 0} results` : `Browse all ${nseStocksData?.length || 0} NSE listed stocks`}
+                      </p>
                     </div>
-                  </Card>
-                )}
+                    {isLoadingNSE ? (
+                      <div className="space-y-3">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                          <Skeleton key={i} className="h-20" />
+                        ))}
+                      </div>
+                    ) : filteredNSEStocks && filteredNSEStocks.length > 0 ? (
+                      <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                        {filteredNSEStocks.map((stock) => (
+                          <Card key={stock.id} className="p-4 hover:shadow-md transition-shadow cursor-pointer group">
+                            <Link href={`/stock/${stock.symbol}?tab=results`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <h3 className="font-semibold text-lg group-hover:text-primary transition-colors">{stock.symbol}</h3>
+                                    {stock.sector && (
+                                      <Badge variant="secondary" className={cn("text-xs", getSectorColor(stock.sector))}>
+                                        {stock.sector}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground mb-1">{stock.companyName}</p>
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    {stock.marketCap && (
+                                      <span>Market Cap: {formatMarketCap(stock.marketCap)}</span>
+                                    )}
+                                    {stock.currentPrice && (
+                                      <span className="font-mono font-semibold text-foreground">
+                                        ₹{parseFloat(stock.currentPrice.toString()).toFixed(2)}
+                                      </span>
+                                    )}
+                                    {stock.percentChange && (
+                                      <span className={cn("font-mono font-semibold", parseFloat(stock.percentChange.toString()) >= 0 ? "text-green-500" : "text-red-500")}>
+                                        {parseFloat(stock.percentChange.toString()) >= 0 ? "+" : ""}
+                                        {parseFloat(stock.percentChange.toString()).toFixed(2)}%
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant={stock.inWatchlist ? "destructive" : "default"}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleToggleWatchlist(stock.id, stock.inWatchlist || false);
+                                    }}
+                                    disabled={addToWatchlistMutation.isPending || removeFromWatchlistMutation.isPending}
+                                    className="flex items-center gap-2 min-w-[120px]"
+                                  >
+                                    {stock.inWatchlist ? (
+                                      <>
+                                        <EyeOff className="w-4 h-4" />
+                                        Remove
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Plus className="w-4 h-4" />
+                                        Add to Watchlist
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+                            </Link>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : searchQuery ? (
+                      <Card className="p-12">
+                        <div className="text-center text-muted-foreground">
+                          <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                          <p>No NSE stocks found matching "{searchQuery}"</p>
+                        </div>
+                      </Card>
+                    ) : (
+                      <Card className="p-12">
+                        <div className="text-center text-muted-foreground">
+                          <Building2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                          <p>No NSE stocks available</p>
+                        </div>
+                      </Card>
+                    )}
+                  </TabsContent>
+                </Tabs>
               </div>
             </>
           )}

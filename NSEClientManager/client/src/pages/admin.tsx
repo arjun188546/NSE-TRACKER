@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation, Link } from "wouter";
@@ -137,6 +137,13 @@ export default function AdminPage() {
     },
   });
 
+  // Redirect to login if not authenticated or not admin
+  useEffect(() => {
+    if (!isLoading && (!user || !isAdmin)) {
+      setLocation("/");
+    }
+  }, [isLoading, user, isAdmin, setLocation]);
+
   // Show loading while validating session
   if (isLoading) {
     return (
@@ -151,7 +158,6 @@ export default function AdminPage() {
 
   // Check admin access after all hooks have been called
   if (!user || !isAdmin) {
-    setLocation("/");
     return null;
   }
 

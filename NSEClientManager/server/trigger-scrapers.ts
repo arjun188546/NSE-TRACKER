@@ -5,9 +5,21 @@
 
 import { scrapeIncrementalCandlestickData } from './services/nse-scraper/candlestick-scraper';
 import { scrapeIncrementalDeliveryData } from './services/nse-scraper/delivery-scraper';
+import { scrapeQuarterlyFinancials } from './services/nse-scraper/quarterly-financials-scraper';
 
 async function main() {
   console.log('🚀 Starting manual scraper trigger...\n');
+
+  try {
+    // Trigger quarterly financials scraper
+    console.log('📈 Triggering quarterly financials scraper...');
+    console.log('⏱️  This will process all 992 stocks (estimated: 8-10 minutes)\n');
+    const quarterlyCount = await scrapeQuarterlyFinancials();
+    console.log(`✅ Quarterly financials scraper completed: ${quarterlyCount} stocks updated\n`);
+  } catch (error: any) {
+    console.error('❌ Quarterly financials scraper failed:', error.message);
+    console.error(error.stack);
+  }
 
   try {
     // Trigger candlestick scraper

@@ -2,8 +2,6 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { startScheduler } from "./services/nse-scraper";
-import { priceUpdateService } from "./services/price-update-service";
 
 const app = express();
 
@@ -95,57 +93,74 @@ process.on('uncaughtException', (error) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  let port = parseInt(process.env.PORT || '5000', 10);
-  const listenOptions: any = {
-    port,
-    host: "0.0.0.0",
-  };
-  // SO_REUSEPORT is not supported on Windows; only enable elsewhere
-  if (process.platform !== "win32") {
-    listenOptions.reusePort = true;
+  // For Vercel deployment, we export the app and don't start a server
+  if (process.env.VERCEL) {
+    log('Running on Vercel - serverless mode');
+    // Export for Vercel
+    module.exports = app;
+  } else {
+    // Local development - start server
+    // ALWAYS serve the app on the port specified in the environment variable PORT
+    // Other ports are firewalled. Default to 5000 if not specified.
+    // this serves both the API and the client.
+    // It is the only port that is not firewalled.
+    let port = parseInt(process.env.PORT || '5000', 10);
+    const listenOptions: any = {
+      port,
+      host: "0.0.0.0",
+    };
+    // SO_REUSEPORT is not supported on Windows; only enable elsewhere
+    if (process.platform !== "win32") {
+      listenOptions.reusePort = true;
+    }
+
+    let schedulerStarted = false;
+    let listening = false;
+
+    const onListening = async () => {
+      if (listening) return; // Prevent duplicate callback execution
+      listening = true;
+      
+      log(`serving on port ${port}`);
+      
+      // In local development, start background schedulers
+      if (!schedulerStarted && process.env.NODE_ENV !== "test") {
+        schedulerStarted = true;
+        log('Starting local development background jobs...');
+        
+        // Dynamic import to avoid issues in Vercel
+        const { startScheduler } = await import("./services/nse-scraper");
+        const { priceUpdateService } = await import("./services/price-update-service");
+        
+        log('Starting NSE scraper scheduler...');
+        startScheduler();
+        log('Starting real-time price update service...');
+        await priceUpdateService.start();
+        log('✅ Background jobs started');
+      }
+    };
+
+    const startServer = () => {
+      if (server.listening) {
+        log('server already listening, skipping duplicate start');
+        return;
+      }
+      
+      server.listen(listenOptions, onListening);
+    };
+
+    server.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        log(`port ${port} in use, retrying on ${port + 1}...`);
+        port += 1;
+        listenOptions.port = port;
+        setTimeout(startServer, 300);
+      } else {
+        log(`server error: ${err.message}`);
+        throw err;
+      }
+    });
+
+    startServer();
   }
-
-  let schedulerStarted = false;
-  let listening = false;
-
-  const onListening = async () => {
-    if (listening) return; // Prevent duplicate callback execution
-    listening = true;
-    
-    log(`serving on port ${port}`);
-    if (!schedulerStarted && process.env.NODE_ENV !== "test") {
-      schedulerStarted = true;
-      log(`Starting NSE scraper scheduler...`);
-      startScheduler();
-      log(`Starting real-time price update service...`);
-      await priceUpdateService.start();
-    }
-  };
-
-  const startServer = () => {
-    if (server.listening) {
-      log('server already listening, skipping duplicate start');
-      return;
-    }
-    
-    server.listen(listenOptions, onListening);
-  };
-
-  server.on('error', (err: any) => {
-    if (err.code === 'EADDRINUSE') {
-      log(`port ${port} in use, retrying on ${port + 1}...`);
-      port += 1;
-      listenOptions.port = port;
-      setTimeout(startServer, 300);
-    } else {
-      log(`server error: ${err.message}`);
-      throw err;
-    }
-  });
-
-  startServer();
 })();

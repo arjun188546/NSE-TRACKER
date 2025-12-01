@@ -17,29 +17,31 @@ import { TrendingDown, TrendingUp } from 'lucide-react';
 interface QuarterlyData {
   quarter: string;
   fiscalYear: string;
-  revenue?: string;
-  profit?: string;
-  eps?: string;
-  operatingProfit?: string;
-  operatingProfitMargin?: string;
-  prevRevenue?: string;
-  prevProfit?: string;
-  prevEps?: string;
-  prevOperatingProfit?: string;
-  yearAgoRevenue?: string;
-  yearAgoProfit?: string;
-  yearAgoEps?: string;
-  yearAgoOperatingProfit?: string;
-  revenueQoQ?: string;
-  profitQoQ?: string;
-  epsQoQ?: string;
-  operatingProfitQoQ?: string;
-  operatingProfitMarginQoQ?: string;
-  revenueYoY?: string;
-  profitYoY?: string;
-  epsYoY?: string;
-  operatingProfitYoY?: string;
-  operatingProfitMarginYoY?: string;
+  revenue?: number | string;
+  profit?: number | string;
+  eps?: number | string;
+  operatingProfit?: number | string;
+  operatingProfitMargin?: number | string;
+  prevRevenue?: number | string;
+  prevProfit?: number | string;
+  prevEps?: number | string;
+  prevOperatingProfit?: number | string;
+  prevOperatingProfitMargin?: number | string;
+  yearAgoRevenue?: number | string;
+  yearAgoProfit?: number | string;
+  yearAgoEps?: number | string;
+  yearAgoOperatingProfit?: number | string;
+  yearAgoOperatingProfitMargin?: number | string;
+  revenueQoQ?: number | string;
+  profitQoQ?: number | string;
+  epsQoQ?: number | string;
+  operatingProfitQoQ?: number | string;
+  operatingProfitMarginQoQ?: number | string;
+  revenueYoY?: number | string;
+  profitYoY?: number | string;
+  epsYoY?: number | string;
+  operatingProfitYoY?: number | string;
+  operatingProfitMarginYoY?: number | string;
 }
 
 interface QuarterlyPerformanceProps {
@@ -116,7 +118,7 @@ export function QuarterlyPerformance({ data }: QuarterlyPerformanceProps) {
 
   // Helper to format percentage
   const formatPercent = (value?: string | number) => {
-    if (!value) return '—';
+    if (value === null || value === undefined) return '—';
     const num = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(num)) return '—';
     return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`;
@@ -124,7 +126,7 @@ export function QuarterlyPerformance({ data }: QuarterlyPerformanceProps) {
 
   // Helper to get percentage color and icon
   const getPercentageStyle = (value?: string | number) => {
-    if (!value) return { color: 'text-muted-foreground', icon: null };
+    if (value === null || value === undefined) return { color: 'text-muted-foreground', icon: null };
     const num = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(num)) return { color: 'text-muted-foreground', icon: null };
     
@@ -276,14 +278,14 @@ export function QuarterlyPerformance({ data }: QuarterlyPerformanceProps) {
               <TableRow>
                 <TableCell className="font-semibold">Operating Profit Margin</TableCell>
                 <TableCell className="text-center font-mono">{formatPercent(data.operatingProfitMargin)}</TableCell>
-                <TableCell className="text-center font-mono text-muted-foreground">—</TableCell>
+                <TableCell className="text-center font-mono text-muted-foreground">{formatPercent(data.prevOperatingProfitMargin)}</TableCell>
                 <TableCell className="text-center">
                   <span className={`font-mono font-semibold ${getPercentageStyle(data.operatingProfitMarginQoQ).color}`}>
                     {getPercentageStyle(data.operatingProfitMarginQoQ).icon}
                     {formatPercent(data.operatingProfitMarginQoQ)}
                   </span>
                 </TableCell>
-                <TableCell className="text-center font-mono text-muted-foreground">—</TableCell>
+                <TableCell className="text-center font-mono text-muted-foreground">{formatPercent(data.yearAgoOperatingProfitMargin)}</TableCell>
                 <TableCell className="text-center">
                   <span className={`font-mono font-semibold ${getPercentageStyle(data.operatingProfitMarginYoY).color}`}>
                     {getPercentageStyle(data.operatingProfitMarginYoY).icon}
