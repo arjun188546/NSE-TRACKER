@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { storage } from '../storage';
 import { updateStoredPrices } from './nse-scraper/price-fetcher';
+import { getSubscribedStocks } from '../socket';
 
 class PriceUpdateService {
   private updateJob: any = null;
@@ -8,6 +9,7 @@ class PriceUpdateService {
   private updateInterval = 5000; // 5 seconds during market hours
   private eodSnapshotCaptured = false; // Track if EOD snapshot was captured today
   private lastMarketSession: string | null = null; // Track last market session date (YYYY-MM-DD)
+  private backgroundStockIndex = 0; // Track index for background stock updates
 
   /**
    * Check if current time is within market hours (9:15 AM - 3:30 PM IST, Mon-Fri)
@@ -18,17 +20,17 @@ class PriceUpdateService {
     const day = istTime.getDay(); // 0 = Sunday, 6 = Saturday
     const hour = istTime.getHours();
     const minute = istTime.getMinutes();
-    
+
     // Check if it's a weekday (Monday-Friday)
     if (day === 0 || day === 6) {
       return false;
     }
-    
+
     // Market hours: 9:15 AM to 3:30 PM
     const currentTimeMinutes = hour * 60 + minute;
     const marketOpen = 9 * 60 + 15;  // 9:15 AM
     const marketClose = 15 * 60 + 30; // 3:30 PM
-    
+
     return currentTimeMinutes >= marketOpen && currentTimeMinutes <= marketClose;
   }
 
@@ -47,17 +49,17 @@ class PriceUpdateService {
    */
   private shouldFetchFromNSE(): boolean {
     const todaySession = this.getTodaySessionDate();
-    
+
     // If market is open, always fetch
     if (this.isMarketHours) {
       return true;
     }
-    
+
     // If market is closed and we've already captured EOD for today, don't fetch
     if (this.eodSnapshotCaptured && this.lastMarketSession === todaySession) {
       return false;
     }
-    
+
     // If we haven't captured EOD yet for today, allow one fetch
     return true;
   }
@@ -65,17 +67,67 @@ class PriceUpdateService {
   /**
    * Update prices for all tracked stocks
    */
+  /**
+   * Update prices for all tracked stocks using Priority Queue
+   * 1. High Priority: Subscribed stocks (visible to users) - updated every cycle
+   * 2. Low Priority: Background stocks - updated in round-robin fashion
+   */
   private async updatePrices(): Promise<void> {
     try {
       // Get all stocks from portfolio
-      const stocks = await storage.getAllStocks();
-      if (!stocks || stocks.length === 0) {
+      const allStocks = await storage.getAllStocks();
+      if (!allStocks || allStocks.length === 0) {
         console.log('[Price Service] No stocks to update');
         return;
       }
 
-      const symbols = stocks.map(s => s.symbol);
-      await updateStoredPrices(symbols);
+      const allSymbols = allStocks.map(s => s.symbol);
+
+      // Get currently subscribed stocks (High Priority)
+      const subscribedSymbols = getSubscribedStocks();
+
+      // Filter out subscribed stocks from background list to avoid double fetching
+      const backgroundSymbols = allSymbols.filter(s => !subscribedSymbols.includes(s));
+
+      // Calculate capacity
+      // We have 5000ms interval. Rate limit is 500ms per request.
+      // Max requests per cycle = 5000 / 500 = 10 requests.
+      // We use batch size of 5 in price-fetcher, so we can do 10 batches? 
+      // No, price-fetcher handles batching.
+      // Let's aim for ~10-15 stocks per cycle to be safe and responsive.
+
+      const stocksToUpdate: string[] = [];
+
+      // 1. Add ALL subscribed stocks (High Priority)
+      stocksToUpdate.push(...subscribedSymbols);
+
+      // 2. Fill remaining capacity with background stocks (Low Priority)
+      // Target about 20 stocks per cycle total to keep loop time reasonable (~5-6s)
+      const targetBatchSize = 20;
+      const remainingCapacity = Math.max(0, targetBatchSize - subscribedSymbols.length);
+
+      if (remainingCapacity > 0 && backgroundSymbols.length > 0) {
+        // Get next chunk of background stocks
+        const endIndex = (this.backgroundStockIndex + remainingCapacity) % backgroundSymbols.length;
+
+        if (endIndex > this.backgroundStockIndex) {
+          // Normal slice
+          stocksToUpdate.push(...backgroundSymbols.slice(this.backgroundStockIndex, endIndex));
+        } else {
+          // Wrap around
+          stocksToUpdate.push(...backgroundSymbols.slice(this.backgroundStockIndex));
+          stocksToUpdate.push(...backgroundSymbols.slice(0, endIndex));
+        }
+
+        // Update index for next cycle
+        this.backgroundStockIndex = endIndex;
+      }
+
+      if (stocksToUpdate.length > 0) {
+        console.log(`[Price Service] Updating ${stocksToUpdate.length} stocks (${subscribedSymbols.length} priority, ${stocksToUpdate.length - subscribedSymbols.length} background)`);
+        await updateStoredPrices(stocksToUpdate);
+      }
+
     } catch (error: any) {
       console.error('[Price Service] Price update failed:', error.message);
     }
@@ -88,7 +140,7 @@ class PriceUpdateService {
   private async captureEODSnapshot(): Promise<void> {
     try {
       const todaySession = this.getTodaySessionDate();
-      
+
       // Skip if already captured for today
       if (this.eodSnapshotCaptured && this.lastMarketSession === todaySession) {
         console.log('[Price Service] EOD snapshot already captured for today');
@@ -128,7 +180,7 @@ class PriceUpdateService {
       const symbols = stocks.map(s => s.symbol);
       const todaySession = this.getTodaySessionDate();
       const marketOpen = this.checkMarketHours();
-      
+
       // Check if we have recent data (within last 6 hours)
       const hasRecentData = stocks.every(stock => {
         if (!stock.lastUpdated) return false;
@@ -136,7 +188,7 @@ class PriceUpdateService {
         const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
         return lastUpdate > sixHoursAgo;
       });
-      
+
       // Smart decision: Fetch from NSE or use stored data
       if (marketOpen) {
         // Market is open - always fetch fresh data
@@ -175,7 +227,7 @@ class PriceUpdateService {
     // Set market hours status FIRST (before long-running fetch)
     const initialMarketCheck = this.checkMarketHours();
     console.log('[Price Service] Initial market check:', initialMarketCheck ? 'OPEN ✅' : 'CLOSED ❌');
-    
+
     if (initialMarketCheck) {
       this.isMarketHours = true;
       this.lastMarketSession = this.getTodaySessionDate();
@@ -196,7 +248,7 @@ class PriceUpdateService {
     cron.schedule('* * * * *', async () => {
       const nowMarketHours = this.checkMarketHours();
       const todaySession = this.getTodaySessionDate();
-      
+
       if (nowMarketHours && !this.isMarketHours) {
         // Market just opened - reset EOD flag for new trading day
         console.log('[Price Service] 📈 Market OPEN - Starting live price updates every 5 seconds');
@@ -210,7 +262,7 @@ class PriceUpdateService {
         console.log('[Price Service] 📉 Market CLOSED - Stopping live price updates');
         this.isMarketHours = false;
         this.stopLiveUpdates();
-        
+
         // Capture final closing prices
         if (!this.eodSnapshotCaptured) {
           await this.captureEODSnapshot();

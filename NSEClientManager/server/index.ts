@@ -118,20 +118,35 @@ process.on('uncaughtException', (error) => {
     let listening = false;
 
     const onListening = async () => {
-      if (listening) return; // Prevent duplicate callback execution
+      console.log("DEBUG: onListening called");
+      if (listening) {
+        console.log("DEBUG: Already listening, skipping");
+        return;
+      }
       listening = true;
-      
+
       log(`serving on port ${port}`);
-      
+
+      // Initialize WebSocket server
+      try {
+        console.log("DEBUG: Importing socket module...");
+        const { setupWebSocket } = await import("./socket");
+        console.log("DEBUG: Setting up WebSocket...");
+        setupWebSocket(server);
+        log("WebSocket server started");
+      } catch (err) {
+        console.error("Failed to start WebSocket server:", err);
+      }
+
       // In local development, start background schedulers
       if (!schedulerStarted && process.env.NODE_ENV !== "test") {
         schedulerStarted = true;
         log('Starting local development background jobs...');
-        
+
         // Dynamic import to avoid issues in Vercel
         const { startScheduler } = await import("./services/nse-scraper");
         const { priceUpdateService } = await import("./services/price-update-service");
-        
+
         log('Starting NSE scraper scheduler...');
         startScheduler();
         log('Starting real-time price update service...');
@@ -145,7 +160,7 @@ process.on('uncaughtException', (error) => {
         log('server already listening, skipping duplicate start');
         return;
       }
-      
+
       server.listen(listenOptions, onListening);
     };
 

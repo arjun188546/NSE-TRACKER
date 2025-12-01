@@ -12,7 +12,7 @@ class NSEClient {
   private sessionInitialized: boolean;
   private client: AxiosInstance;
   private lastRequestTime: number;
-  private minRequestInterval: number; // milliseconds
+  private minRequestInterval: number; // milliseconds (200ms = 5 requests/second max)
   private consecutiveErrors: number;
   private maxConsecutiveErrors: number;
   private sessionExpiry: number; // Session expiry timestamp
@@ -23,7 +23,7 @@ class NSEClient {
     this.cookies = '';
     this.sessionInitialized = false;
     this.lastRequestTime = 0;
-    this.minRequestInterval = 2000; // 2 seconds between requests (increased)
+    this.minRequestInterval = 500; // 500ms between requests (balanced for reliability)
     this.consecutiveErrors = 0;
     this.maxConsecutiveErrors = 5;
     this.sessionExpiry = 0;
@@ -75,6 +75,11 @@ class NSEClient {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept-Language': 'en-US,en;q=0.9',
           'Accept-Encoding': 'gzip, deflate, br',
+          'sec-fetch-dest': 'document',
+          'sec-fetch-mode': 'navigate',
+          'sec-fetch-site': 'none',
+          'sec-fetch-user': '?1',
+          'upgrade-insecure-requests': '1',
         },
       });
 
@@ -95,6 +100,9 @@ class NSEClient {
             'Referer': 'https://www.nseindia.com/',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Cookie': this.cookies,
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-origin',
           },
         });
       } catch (e) {
@@ -123,12 +131,12 @@ class NSEClient {
   private async rateLimit(): Promise<void> {
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
-    
+
     if (timeSinceLastRequest < this.minRequestInterval) {
       const waitTime = this.minRequestInterval - timeSinceLastRequest;
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
-    
+
     this.lastRequestTime = Date.now();
   }
 
@@ -172,7 +180,7 @@ class NSEClient {
       try {
         const url = endpoint.startsWith('http') ? endpoint : `${this.baseURL}${endpoint}`;
         console.log(`[NSE Client] GET ${url} (attempt ${attempt}/${retries})`);
-        
+
         const response = await this.client.get(url, config);
         this.consecutiveErrors = 0; // Reset error counter on success
         return response.data;
@@ -182,10 +190,10 @@ class NSEClient {
         console.error(`[NSE Client] Request failed (attempt ${attempt}/${retries}):`, errorMsg);
 
         // Handle specific error types
-        const isConnectionError = error.code === 'ECONNRESET' || 
-                                 error.code === 'ETIMEDOUT' ||
-                                 error.code === 'ECONNREFUSED' ||
-                                 error.code === 'EPIPE';
+        const isConnectionError = error.code === 'ECONNRESET' ||
+          error.code === 'ETIMEDOUT' ||
+          error.code === 'ECONNREFUSED' ||
+          error.code === 'EPIPE';
 
         const isForbidden = error.response?.status === 403;
         const isServerError = error.response?.status >= 500;
